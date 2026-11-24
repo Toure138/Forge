@@ -294,3 +294,27 @@ def test_rename_validates_the_name(world: World, name: str) -> None:
         "/api/organization", json={"name": name}
     )
     assert response.status_code == 422
+
+
+# --- agents need an active organization (T036) ---
+
+
+def test_user_without_organization_cannot_use_agents(world: World) -> None:
+    """AC-18 (FR-17, FR-31): Eve, signed in but member of no organization, cannot list nor call
+    an agent: without the header, 400; with any organization (here Acme), the answer of an
+    organization that does not exist."""
+    eve = world.add_person("eve", "Eve Laurent", "eve@example.com")
+    client = world.client_as(eve)
+
+    no_header = client.get("/api/agents")
+    assert no_header.status_code == 400
+    assert no_header.json() == ORGANIZATION_REQUIRED
+
+    headers = {ORG_HEADER: str(world.acme)}
+    for response in (
+        client.get("/api/agents", headers=headers),
+        client.post("/api/agents/assistant/invoke", json={"message": "hi"}, headers=headers),
+        client.post("/api/agents/assistant/stream", json={"message": "hi"}, headers=headers),
+    ):
+        assert response.status_code == 404
+        assert response.json() == ORGANIZATION_NOT_FOUND

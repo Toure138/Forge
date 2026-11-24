@@ -28,9 +28,9 @@ from app.main import create_app
 from tests.conftest import fake_model, settings_for_tests
 from tests.route_requests import api_routes, concrete_path, sample_body
 
-# Agent routes of spec 000, still open until `require("agents:use")` protects them.
-# À vider en T036 : the test below then requires an empty set.
-NOT_YET_PROTECTED = frozenset({"list_agents", "invoke", "stream"})
+# Routes allowed to stay unprotected for a while. The agent routes of spec 000 were listed here
+# until `require("agents:use")` protected them (spec 001, T036); it must stay empty.
+NOT_YET_PROTECTED: frozenset[str] = frozenset()
 
 
 def declares_permission(dependant: Dependant) -> bool:
@@ -38,6 +38,17 @@ def declares_permission(dependant: Dependant) -> bool:
         authz.declared_permission(dep.call) is not None or declares_permission(dep)
         for dep in dependant.dependencies
     )
+
+
+def declared_permissions(dependant: Dependant) -> set[str]:
+    """Every permission declared in the dependency tree of a route."""
+    found: set[str] = set()
+    for dep in dependant.dependencies:
+        permission = authz.declared_permission(dep.call)
+        if permission is not None:
+            found.add(permission)
+        found |= declared_permissions(dep)
+    return found
 
 
 def unprotected_routes(app: FastAPI) -> set[str]:
@@ -104,15 +115,20 @@ def test_checker_flags_route_without_permission() -> None:
 
 
 def test_every_route_declares_permission_or_exemption() -> None:
-    assert unprotected_routes(real_app()) - NOT_YET_PROTECTED == set()
+    """AC-29 (complete since T036): no route outside `PUBLIC_ROUTES` lacks a permission."""
+    assert unprotected_routes(real_app()) == set()
 
 
-def test_not_yet_protected_is_exactly_known_set() -> None:
-    """A new forgotten route breaks this test; protecting an agent route requires removing it
-    from `NOT_YET_PROTECTED` (emptied in T036)."""
-    app = real_app()
-    assert unprotected_routes(app) == NOT_YET_PROTECTED
-    assert {route.name for route in iter_route_contexts(app.routes)} >= NOT_YET_PROTECTED
+def test_not_yet_protected_is_empty() -> None:
+    """The temporary list of phase 2 is empty: every route, agents included, is protected."""
+    assert frozenset() == NOT_YET_PROTECTED
+
+
+def test_agent_routes_declare_agents_use() -> None:
+    """FR-31: the three agent routes check `agents:use` (not merely some permission)."""
+    agent_routes = {r.name: r for r in iter_route_contexts(real_app().routes)}
+    for name in ("list_agents", "invoke_agent", "stream_agent"):
+        assert declared_permissions(agent_routes[name].dependant) == {"agents:use"}, name
 
 
 def test_exemptions_exist_as_routes() -> None:

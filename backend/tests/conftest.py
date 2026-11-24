@@ -305,6 +305,18 @@ def world(clean_db: None, clock: FakeClock, fake_google: FakeGoogle) -> Iterator
         yield from build_world(clock, fake_google, conn)
 
 
+@pytest.fixture
+def member_client(world: Any) -> Callable[..., TestClient]:
+    """`member_client(*replies)`: Carole, Member of Acme, signed in with Acme active, on an
+    application whose fake model answers with `replies` (agent routes need `agents:use`)."""
+
+    def _make(*replies: AIMessage | str) -> TestClient:
+        client: TestClient = world.client_as(world.carole, world.acme, replies=replies)
+        return client
+
+    return _make
+
+
 def start_login(client: TestClient) -> tuple[httpx.Response, dict[str, str]]:
     """`GET /api/auth/login` (no redirect followed); returns the response and the parameters of
     the authorization URL the browser is sent to."""

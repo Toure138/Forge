@@ -29,6 +29,7 @@ from typing import Any
 
 import psycopg
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 from psycopg.rows import dict_row
 from sqlalchemy.pool import NullPool
 
@@ -268,11 +269,18 @@ class World:
 
     # --- clients ---
 
-    def client_as(self, person: Person, org: uuid.UUID | None = None) -> TestClient:
-        """A browser signed in as `person` (lifespan running), acting in `org` if given."""
+    def client_as(
+        self,
+        person: Person,
+        org: uuid.UUID | None = None,
+        *,
+        replies: Sequence[AIMessage | str] = (),
+    ) -> TestClient:
+        """A browser signed in as `person` (lifespan running), acting in `org` if given. The
+        application's fake model answers with `replies`, in order (none: calling it fails)."""
         from tests.conftest import client_for, create_test_app  # avoid an import cycle
 
-        client = client_for(create_test_app(self.clock, self.fake_google))
+        client = client_for(create_test_app(self.clock, self.fake_google, *replies))
         client.__enter__()
         self._clients.append(client)
         client.cookies.set(SESSION_COOKIE, person.session_token)

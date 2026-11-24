@@ -422,3 +422,26 @@ def test_owner_invites_second_owner(world: World) -> None:
     owners = sorted(uid for uid, role in world.roles(world.acme).items() if role == "owner")
     assert owners == sorted([world.alice.id, world.carole.id])
     assert permissions_of(world, world.carole) == permissions_of(world, world.alice)
+
+
+# --- the role is read at each request, agents included (T036) ---
+
+
+def test_demotion_to_guest_takes_effect_on_next_request(world: World) -> None:
+    """AC-31 (US-7, FR-26): Carole, Member of Acme, uses the agents; Bob (Admin) makes her a
+    Guest; her very next agent request is refused, with the same session (no new sign-in)."""
+    carole = world.client_as(world.carole, world.acme, replies=["Bonjour !"])
+    assert carole.get("/api/agents").status_code == 200
+    first = carole.post("/api/agents/assistant/invoke", json={"message": "Salut"})
+    assert first.status_code == 200
+    assert first.json()["output"] == "Bonjour !"
+
+    demoted = change_role(world, world.bob, world.carole.id, "guest")
+    assert demoted.status_code == 200
+
+    for response in (
+        carole.get("/api/agents"),
+        carole.post("/api/agents/assistant/invoke", json={"message": "Encore"}),
+    ):
+        assert response.status_code == 403
+        assert response.json() == PERMISSION_DENIED

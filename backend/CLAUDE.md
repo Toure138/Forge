@@ -14,7 +14,7 @@ app/
 ├── api/routes/          health.py, agents.py (invoke + stream SSE)
 └── schemas/             modèles Pydantic = contrat API
 tests/
-├── conftest.py          FakeToolModel, fake_model(), fixture make_client(*replies)
+├── conftest.py          FakeToolModel, fake_model(), fixtures make_client(*replies) (anonyme), world, member_client(*replies)
 ├── test_*.py            modèle factice, aucun réseau
 └── live/                @pytest.mark.live : vrai LLM, RUN_LIVE=1
 ```
@@ -23,13 +23,14 @@ tests/
 ```python
 from langchain_core.messages import AIMessage
 
-def test_agent_calls_tool(make_client):
+def test_agent_calls_tool(member_client):
     call = AIMessage(content="", tool_calls=[{"name": "my_tool", "args": {"x": 1}, "id": "c1"}])
-    client = make_client(call, "Réponse finale")  # réponses successives du modèle
+    client = member_client(call, "Réponse finale")  # réponses successives du modèle
     res = client.post("/api/agents/<nom>/invoke", json={"message": "..."})
     assert res.json()["output"] == "Réponse finale"
 ```
 Le faux modèle renvoie les messages scriptés dans l'ordre. Prévois une réponse par tour de modèle, sous-agents compris.
+Les routes d'agents exigent `agents:use` dans l'organisation active (spec 001) : `member_client(*replies)` est Carole, Membre d'Acme, connectée (fixture `world`) ; pour une autre personne, `world.client_as(person, org, replies=[...])`. `make_client(*replies)` reste anonyme (santé seulement).
 
 ## Windows, base de données et tests (spec 001)
 - psycopg async refuse la boucle Proactor de Windows. Lancer l'API avec `uv run uvicorn app.main:app --reload --port 8000 --loop app.core.aio:selector_loop_factory` (c'est ce que fait `scripts/dev.ps1`). Sans `--loop`, l'application refuse de démarrer avec un message explicite.
