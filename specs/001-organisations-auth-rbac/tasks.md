@@ -333,73 +333,73 @@ Objectif : contexte d'organisation par requête, `require(perm)`, refus journali
 
 Aucune nouvelle dépendance frontend. Toutes les tâches suivent `frontend/CLAUDE.md` : `fetch` simulé, comportement visible, clavier.
 
-- [ ] **T039** `frontend` [P ∥ T040] — Client `lib/api.ts` : types, `request()`, CSRF, en-tête d'organisation, `ApiError`, 401
+- [x] **T039** `frontend` [P ∥ T040] — Client `lib/api.ts` : types, `request()`, CSRF, en-tête d'organisation, `ApiError`, 401
   - Sous-agent : `frontend-engineer` · Dépend de : T037 (contrat figé) · Couvre : AC-12 (volet UI), AC-55 (volet client)
   - Tests d'abord, dans `src/lib/api.test.ts` : « adds X-CSRF-Token on unsafe methods » (et pas sur `GET`) ; « adds X-Organization-Id when orgId is given » ; « throws ApiError with status and code » ; « calls onUnauthenticated on 401 » ; « LOGIN_URL is /api/auth/login ».
   - Code : types TS du plan (miroir exact des schémas Pydantic) ; `request()` interne ; `setCsrfToken()` (jeton gardé en mémoire du module, jamais dans `localStorage`) ; `setOnUnauthenticated()` ; fonctions `getSession`, `logout`, `listMyOrganizations`, `createOrganization`, `listMyInvitations`, `acceptInvitation`, `declineInvitation`, `getActiveOrganization`, `renameOrganization`, `leaveOrganization`, `listMembers`, `changeMemberRole`, `removeMember`, `listInvitations`, `createInvitation`, `revokeInvitation`, `listAuditEvents`. Les fonctions d'agents (`listAgents`, `streamAgent`) sont **inchangées** ici : elles changent en T048, avec leurs appelants.
   - Fichiers : `src/lib/api.ts`, `src/lib/api.test.ts`.
   - Fin : `pnpm lint`, `pnpm typecheck`, `pnpm test` verts.
 
-- [ ] **T040** `frontend` [P ∥ T039] — Messages d'erreur en français
+- [x] **T040** `frontend` [P ∥ T039] — Messages d'erreur en français
   - Sous-agent : `frontend-engineer` · Dépend de : — (phase 5 terminée) · Couvre : FR-47 (socle des messages de AC-20, AC-26, AC-35, AC-55)
   - Tests d'abord : `src/lib/errors.test.ts` « maps every backend error code to a French message » (liste des codes du plan) ; « falls back to a generic message for unknown codes » ; « never exposes the raw message ».
   - Code : `src/lib/errors.ts` (`messageFor(code)`), sans dépendre de `api.ts`.
   - Fichiers : `src/lib/errors.ts`, `src/lib/errors.test.ts`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T041** `frontend` [P ∥ T042, T043, T044, T045, T046] — `AuthProvider`, `useAuth` et `LoginPage`
+- [x] **T041** `frontend` [P ∥ T042, T043, T044, T045, T046] — `AuthProvider`, `useAuth` et `LoginPage`
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : AC-52 (page), AC-55 (contexte)
   - Tests d'abord : `src/features/auth/LoginPage.test.tsx` « shows only the Google sign-in link » (lien vers `/api/auth/login`, accessible au clavier) ; « shows session-ended message » ; « shows login failure message and cleans the URL » (`?login_error=failed`, `history.replaceState`) ; `src/features/auth/AuthProvider.test.tsx` « loads the session and sets the CSRF token » ; « becomes a visitor with reason session_ended on 401 after being signed in » ; « logout calls the API and becomes a visitor ».
   - Fichiers : `src/features/auth/AuthProvider.tsx`, `src/features/auth/useAuth.ts`, `src/features/auth/LoginPage.tsx`, `src/features/auth/LoginPage.test.tsx`, `src/features/auth/AuthProvider.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T042** `frontend` [P ∥ T041, T043, T044, T045, T046] — `useOrganizations` et `OrganizationSwitcher`
+- [x] **T042** `frontend` [P ∥ T041, T043, T044, T045, T046] — `useOrganizations` et `OrganizationSwitcher`
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : AC-53 (sélecteur)
   - Tests d'abord : `src/features/organizations/OrganizationSwitcher.test.tsx` « lists organizations with role and switches on change » (`<select aria-label="Organisation">`, clavier) ; `src/features/organizations/useOrganizations.test.tsx` « restores the remembered organization only if still a member » (`localStorage` `forge.activeOrganizationId` revalidé contre la liste) ; « loads permissions of the active organization ».
   - Fichiers : `src/features/organizations/useOrganizations.ts`, `src/features/organizations/useOrganizations.test.tsx`, `src/features/organizations/OrganizationSwitcher.tsx`, `src/features/organizations/OrganizationSwitcher.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T043** `frontend` [P ∥ T041, T042, T044, T045, T046] — Écran « aucune organisation », invitations reçues et création d'organisation
+- [x] **T043** `frontend` [P ∥ T041, T042, T044, T045, T046] — Écran « aucune organisation », invitations reçues et création d'organisation
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : AC-18 (volet UI), FR-22 (affichage)
   - Tests d'abord : `src/features/organizations/NoOrganizationScreen.test.tsx` « shows pending invitations and create form » ; `src/features/organizations/MyInvitations.test.tsx` « accepts an invitation then notifies the parent » ; « declines an invitation » ; « shows translated error when the invitation expired » (410) ; `src/features/organizations/CreateOrganizationForm.test.tsx` « creates an organization and notifies the parent » ; « shows validation error for an empty name ».
   - Code : composants pilotés par props (`onChanged`), sans importer `useOrganizations` ; hook `useMyInvitations` local.
   - Fichiers : `src/features/organizations/NoOrganizationScreen.tsx`, `src/features/organizations/NoOrganizationScreen.test.tsx`, `src/features/organizations/MyInvitations.tsx`, `src/features/organizations/useMyInvitations.ts`, `src/features/organizations/MyInvitations.test.tsx`, `src/features/organizations/CreateOrganizationForm.tsx`, `src/features/organizations/CreateOrganizationForm.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T044** `frontend` [P ∥ T041, T042, T043, T045, T046] — Réglages de l'organisation : renommer, quitter
+- [x] **T044** `frontend` [P ∥ T041, T042, T043, T045, T046] — Réglages de l'organisation : renommer, quitter
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : volet UI de AC-35, AC-36, AC-59
   - Tests d'abord : `src/features/organizations/OrganizationSettings.test.tsx` « rename is offered only with organization:rename » ; « renames and notifies the parent » ; « leave shows translated last_owner error » ; « leave notifies the parent on success ».
   - Code : composant piloté par props (`organization: ActiveOrganization`, `onChanged`).
   - Fichiers : `src/features/organizations/OrganizationSettings.tsx`, `src/features/organizations/OrganizationSettings.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T045** `frontend` [P ∥ T041, T042, T043, T044, T046] — Membres et invitations en attente
+- [x] **T045** `frontend` [P ∥ T041, T042, T043, T044, T046] — Membres et invitations en attente
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : volet UI de AC-19, AC-25, AC-26, AC-32, AC-34 (FR-44 : choix filtrés par permission, le serveur reste l'autorité)
   - Tests d'abord : `src/features/members/MembersPanel.test.tsx` « lists members with roles » ; « role choices follow admins:manage and owners:manage » ; « changes a role and removes a member » ; « shows translated error on refusal » ; « shows empty state for pending invitations » ; « revokes a pending invitation » ; `src/features/members/InviteForm.test.tsx` « invites with an allowed role » ; « shows already_member message ».
   - Fichiers : `src/features/members/useMembers.ts`, `src/features/members/MembersPanel.tsx`, `src/features/members/MembersPanel.test.tsx`, `src/features/members/InviteForm.tsx`, `src/features/members/InviteForm.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T046** `frontend` [P ∥ T041, T042, T043, T044, T045] — Journal d'audit
+- [x] **T046** `frontend` [P ∥ T041, T042, T043, T044, T045] — Journal d'audit
   - Sous-agent : `frontend-engineer` · Dépend de : T039, T040 · Couvre : volet UI de AC-48
   - Tests d'abord : `src/features/audit/AuditLogPanel.test.tsx` « renders events with actor, action, target, date and outcome » ; « loads older events with before_id » ; « shows empty state » ; « shows translated error ».
   - Fichiers : `src/features/audit/useAuditLog.ts`, `src/features/audit/AuditLogPanel.tsx`, `src/features/audit/AuditLogPanel.test.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T047** `frontend` — Coquille `App.tsx` : connexion, organisations, onglets selon les permissions
+- [x] **T047** `frontend` — Coquille `App.tsx` : connexion, organisations, onglets selon les permissions
   - Sous-agent : `frontend-engineer` · Dépend de : T041, T042, T043, T044, T045, T046 · Couvre : AC-18 (écran), AC-52, AC-53, AC-54, AC-55
   - Tests d'abord, dans `src/App.test.tsx` : « shows only the login page to visitors » ; « user without organization sees the no-organization screen » ; « switching organization updates name and role-dependent screens » ; « management tabs follow permissions [member-admin] » ; « returns to login with session-ended message on 401 » ; « shows pending invitations inside the app » (FR-22) ; « tabs are keyboard reachable ».
   - Code : `AuthProvider` dans `main.tsx` ou `App.tsx` ; chargement → `LoginPage` → `NoOrganizationScreen` → coquille (sélecteur, nom de l'utilisateur, Déconnexion, onglets `Chat | Membres | Journal | Organisation` en `useState`) ; `<main key={activeOrgId}>`. L'onglet Chat garde provisoirement l'appel actuel de `ChatPanel` (branché en T048).
   - Fichiers : `src/App.tsx`, `src/App.test.tsx`, `src/main.tsx`.
   - Fin : vérifications frontend vertes.
 
-- [ ] **T048** `frontend` — Chat dans l'organisation active, message pour les Invités
+- [x] **T048** `frontend` — Chat dans l'organisation active, message pour les Invités
   - Sous-agent : `frontend-engineer` · Dépend de : T047 · Couvre : AC-38 (volet UI, non-régression 000 AC-5), AC-39 (volet UI)
   - Tests d'abord, dans `src/features/chat/ChatPanel.test.tsx` : test existant « streams the assistant answer into the conversation » adapté (appel avec `X-Organization-Id` et `X-CSRF-Token`) ; « guest sees no shared agent message » (sans `agents:use`, texte « Aucun agent ne vous est partagé pour l'instant », aucun appel à `fetch`) ; « 403 on agents shows the same message » ; « reuses the server thread_id ».
   - Code : `listAgents(orgId)` et `streamAgent(orgId, agent, message, threadId?, signal?)` dans `src/lib/api.ts` (passent par `request()`) ; `useChat(orgId, agent)` ; `ChatPanel` reçoit `orgId` et les permissions ; branchement dans `App.tsx` (sélecteur d'agent dans l'onglet Chat).
   - Fichiers : `src/lib/api.ts`, `src/features/chat/useChat.ts`, `src/features/chat/ChatPanel.tsx`, `src/features/chat/ChatPanel.test.tsx`, `src/App.tsx`.
   - Fin : vérifications frontend vertes ; `src/App.test.tsx` toujours vert.
 
-- [ ] **Fin de phase 6** : `.\scripts\check.ps1` vert.
+- [x] **Fin de phase 6** : `.\scripts\check.ps1` vert.
 
 ---
 
@@ -762,3 +762,21 @@ Notes d'implémentation, écarts au plan, décisions prises en cours de route (a
   - Événements SSE inchangés : `metadata {thread_id}` (UUID en chaîne), `token {text}`, `tool {name, status}`, `error {message}`, `done {}`.
   - `docs/architecture.md` (tableau des routes, protocole SSE, mémoire des conversations) n'est pas modifié ici : c'est prévu en T051–T053.
 - 2026-11-24 : **Fin de phase 5** : `powershell -NoProfile -File scripts/check.ps1` → `ALL CHECKS PASSED` (ruff format 102 fichiers, ruff check, mypy 52 fichiers, `infra: database` Healthy, pytest 508 réussis + 2 `live` sautés en 108 s, oxlint, tsc, vitest 3 tests). Aucune nouvelle dépendance, aucune nouvelle variable d'environnement. Conteneur `forge-db-1` laissé en marche.
+- 2026-11-24 : **Phase 6 (T039 à T048) terminée.** Aucune nouvelle dépendance frontend, aucun changement backend : le contrat (15 routes + 3 routes d'agents, schémas de `app/schemas/`) correspond au plan, aucun écart trouvé.
+  - **T039** : `ApiError` déclare ses champs `status` et `code` explicitement (`erasableSyntaxOnly` interdit les propriétés de paramètre de l'esquisse du plan). Codes **propres au client** en plus de ceux du backend : `validation_error` (422 FastAPI, `{detail}`), `network_error` (statut 0, `fetch` rejeté), `http_error` (corps inattendu, p. ex. erreur du proxy). Une `AbortError` est relancée telle quelle. `request()` envoie `credentials: 'same-origin'`, n'ajoute `Content-Type` que s'il y a un corps, et n'envoie jamais `thread_id` quand il est absent.
+  - **T040** : `messageFor(code)` et `errorMessage(e)` (lit un `code` texte, jamais le texte de l'erreur). Code client `agent_error` : l'événement SSE `error` (qui porte `str(exc)` côté serveur) s'affiche « L'agent a rencontré une erreur. Réessayez. », jamais le texte brut (FR-47). La constitution VIII reste respectée : l'erreur est bien renvoyée au client, seul l'affichage est générique.
+  - **T041** : `AuthProvider` est monté dans `App.tsx` (`main.tsx` inchangé). `AuthState` = `loading | error (retry) | visitor (reason) | signed_in (user, logout)`. Un 5xx ou un réseau coupé au chargement de la session donne l'état `error` (« Impossible de joindre Forge pour le moment » + Réessayer), pas la page de connexion. `LoginPage` traduit aussi `login_error=cancelled` et `unavailable` (envoyés par le backend) ; une valeur inconnue donne le message « La connexion a échoué ». Seul `login_error` est retiré de l'URL (autres paramètres et ancre conservés).
+  - **T042** : l'organisation active est **par onglet** (R10), en mémoire du hook ; `forge.activeOrganizationId` n'est que la valeur par défaut d'un nouvel onglet ou d'un rechargement. `refresh()` préfère l'organisation active **de l'onglet**, pas celle de `localStorage` (qu'un autre onglet a pu changer). Un échec de `switchTo` (plus membre…) recharge la liste. Clé supprimée quand l'utilisateur n'a plus d'organisation. Accès à `localStorage` sous `try/catch`.
+  - **T043** : après création ou acceptation depuis l'écran « aucune organisation », on entre dans l'organisation obtenue (`refresh(id)`). Dans l'application, `MyInvitations` (masqué s'il est vide) est placé **hors** de la zone remontée au changement d'organisation ; accepter y garde l'organisation courante et ajoute la nouvelle au sélecteur. 404 et 410 retirent l'invitation de la liste, avec le message traduit. Les formulaires valident en local (`noValidate`, mêmes règles que Pydantic : nom non vide après `trim`, 100 caractères ; email `^[^@\s]+@[^@\s]+\.[^@\s]+$`, 320 caractères) avant tout appel.
+  - **T044, T045** : départ et retrait d'un membre : confirmation en ligne (pas de `window.confirm`). Changement de rôle : liste + bouton « Changer le rôle » (rien n'est envoyé au seul changement de la liste, pour le clavier). Sa propre ligne : pas de « Retirer » (on passe par « Quitter l'organisation ») ; le changement de son propre rôle reste proposé si les permissions le permettent (un Propriétaire peut se rétrograder, AC-63), puis les permissions sont rechargées (`onOwnRoleChanged`). Un 404 sur une action recharge la liste. Après une invitation, un message rappelle que Forge n'envoie aucun email (FR-22).
+  - **T046** : la cible s'affiche « Membre 1a2b3c4d » (type + début de l'identifiant, identifiant complet en `title`) : l'API ne donne que l'identifiant, sans nom. Détails mis en forme selon les clés de T034 (`from_name/to_name`, `name`, `from_role/to_role`, `role`, `permission`, `reason`) ; une clé inconnue s'affiche `clé : valeur`. Un échec de « Plus ancien » garde les événements déjà chargés.
+  - **T047** : onglets selon le motif WAI-ARIA (tabindex itinérant, flèches, Début, Fin, activation automatique ; le panneau est focalisable). La zone de l'organisation (`<main>` et ses onglets) est un composant **monté avec `key={organisation active}`** : au changement d'organisation, fil de conversation, listes **et onglet choisi** sont remis à zéro (retour sur Chat). Avatar Google non affiché (aucune image distante). `index.html` passe en `lang="fr"`.
+  - **T048** : `ChatPanel({orgId, permissions})` porte la liste des agents et le sélecteur (et non plus `App.tsx`), pour qu'un 403 sur `GET /agents` affiche le message FR-45 ; nouveau hook `useAgents`. Une conversation est remontée par agent (`key`) ; changer d'agent ou d'organisation, ou cliquer « Nouveau », annule le flux en cours (`AbortController`). Un 403 `permission_denied` sur le flux (rétrogradé Invité depuis le chargement, FR-26) affiche aussi le message FR-45. Les événements SSE sont validés à la lecture (`toStreamEvent`) : un événement inconnu ou mal formé est ignoré au lieu d'être forcé par un `as`.
+  - **Fichiers hors de la liste des tâches** (TDD, dossiers du plan) : `src/lib/roles.ts` (libellés, `canManageRole`, `manageableRoles` : **miroir** de `ROLE_MANAGEMENT_PERMISSION` / `can_manage_role` d'`authz.py`, à tenir synchronisé ; il ne fait que filtrer l'affichage), `src/lib/format.ts`, `src/features/audit/auditFormat.ts`, `src/features/chat/useAgents.ts`, `src/test/fetch.ts` (`mockFetch` par route `"MÉTHODE /chemin"`, files de réponses, `callsTo`), `src/test/fixtures.ts`, `src/test/setup.ts` (une requête sans route simulée fait **échouer** le test, sinon `request()` la changerait en `network_error` silencieux ; vu rouge en retirant `GET /api/agents` des routes d'`App.test.tsx`), `index.html`.
+  - **Limite connue** : le gestionnaire global ne réagit qu'au 401. Si l'utilisateur se reconnecte dans un autre onglet (nouvelle session, cookie partagé), l'onglet resté ouvert garde l'ancien jeton CSRF : ses écritures reçoivent 403 `csrf_failed` (« … Rechargez la page et réessayez »), ses lectures continuent de marcher. Acceptable pour la 001.
+  - Vérifications : 16 fichiers, 85 tests vitest (3 avant la phase) ; `pnpm lint` (oxlint, 0 avertissement), `pnpm typecheck`, `pnpm build` verts.
+  - **Consignes pour la phase 7** :
+    - `frontend/CLAUDE.md` (T052) : la ligne « `App.tsx` sélection de l'agent + layout » est périmée. Décrire : `features/auth` (contexte de session), `features/organizations`, `features/members`, `features/audit`, `features/chat` (agents + conversation) ; `lib/api.ts` (`request()`, `orgId` **explicite** à chaque fonction d'organisation, jeton CSRF en mémoire seulement, `setOnUnauthenticated`), `lib/errors.ts` (n'afficher que `messageFor` / `errorMessage`, jamais `error.message`), `lib/roles.ts` (miroir d'`authz.py`), `lib/format.ts` ; tests : `mockFetch` / `callsTo` de `src/test/fetch.ts`, fixtures de `src/test/fixtures.ts`, garde « requête non simulée » de `setup.ts` ; une seule clé `localStorage` autorisée (`forge.activeOrganizationId`).
+    - `docs/architecture.md` (T051) : flux frontend (session → organisations → coquille remontée par organisation), protocole SSE inchangé mais refus en JSON avant le flux, `thread_id` UUID créé par le serveur.
+    - **Test manuel dans le navigateur** (AC-56, R8), via `.\scripts\dev.ps1` puis http://localhost:5173 (même origine que `OIDC_REDIRECT_URI`) : connexion Google, puis annulation chez Google (`login_error=cancelled`) et Google non configuré (`unavailable`) ; écran « aucune organisation » → créer une organisation ; inviter l'adresse d'un second compte Google (autre profil de navigateur), s'y connecter, voir l'invitation, l'accepter ; changer d'organisation dans deux onglets différents (R10) ; Invité : onglet Chat avec le message FR-45, pas d'onglets Membres ni Journal ; rétrograder un Membre pendant qu'il discute → son envoi suivant affiche le message FR-45 ; se déconnecter dans un onglet → l'action suivante de l'autre onglet ramène à la connexion avec « Votre session a pris fin » ; journal de plus de 50 événements (« Plus ancien ») ; navigation au clavier (Tab jusqu'aux onglets, puis flèches). En dev, `StrictMode` double les requêtes de montage : c'est normal.
+- 2026-11-24 : **Fin de phase 6** : `powershell -NoProfile -File scripts/check.ps1` → `ALL CHECKS PASSED` (pytest 508 réussis + 2 `live` sautés en 111 s, oxlint, tsc, vitest 85 tests) ; `pnpm build` vert. Aucune nouvelle dépendance, aucune nouvelle variable d'environnement. Conteneur `forge-db-1` laissé en marche.
