@@ -1,7 +1,11 @@
 # Starts the dev environment: Postgres (Docker) + migrations, then the backend (:8000) and the
 # frontend (:5173) in two new windows.
 # Usage (from repo root):  .\scripts\dev.ps1
+#   -DbOnly  stop after the database and migrations steps (no windows): used by db-reset.ps1
+#            and by the infra tests (backend/tests/infra).
 # Needs: Docker Desktop running, and a .env at the repo root (copy .env.example).
+param([switch]$DbOnly)
+
 $root = Split-Path -Parent $PSScriptRoot
 
 function Stop-Dev([string]$message) {
@@ -39,6 +43,10 @@ $migrateExit = $LASTEXITCODE
 Pop-Location
 if ($migrateExit -ne 0) {
     Stop-Dev 'Migrations failed: check DATABASE_OWNER_URL in .env and the output above.'
+}
+if ($DbOnly) {
+    Write-Host 'Database ready and migrated.' -ForegroundColor Green
+    exit 0
 }
 
 # 4. Backend and frontend. psycopg's async mode needs a selector event loop on Windows.

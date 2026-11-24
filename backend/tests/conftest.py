@@ -340,12 +340,23 @@ def login(
     )
 
 
+# Opt-in markers: skipped unless their variable is "1".
+OPT_IN_MARKERS = {
+    "live": ("RUN_LIVE", "live test: set RUN_LIVE=1 to call the real model"),
+    "infra": (
+        "RUN_INFRA",
+        "infra test: set RUN_INFRA=1 to drive Docker and the scripts (forge-smoke project)",
+    ),
+}
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     import os
 
-    if os.getenv("RUN_LIVE") == "1":
-        return
-    skip = pytest.mark.skip(reason="live test: set RUN_LIVE=1 to call the real model")
-    for item in items:
-        if "live" in item.keywords:
-            item.add_marker(skip)
+    for marker, (variable, reason) in OPT_IN_MARKERS.items():
+        if os.getenv(variable) == "1":
+            continue
+        skip = pytest.mark.skip(reason=reason)
+        for item in items:
+            if marker in item.keywords:
+                item.add_marker(skip)

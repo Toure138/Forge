@@ -42,7 +42,10 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q"
-markers = ["live: calls the real LLM (needs RUN_LIVE=1 and an API key)"]
+markers = [
+    "live: calls the real LLM (needs RUN_LIVE=1 and an API key)",
+    "infra: drives Docker and the repo scripts on the forge-smoke project (needs RUN_INFRA=1)",
+]
 
 [tool.mypy]
 python_version = "3.12"
