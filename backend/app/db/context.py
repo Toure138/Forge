@@ -6,16 +6,25 @@ transaction with `SELECT set_config(name, value, true)` (the parameterized equiv
 pool hands it to the next request. Never use a session-level `SET`.
 
 Every query is parameterized: values are always bound, never concatenated into SQL.
+
+A refusal raises an exception, which rolls the request transaction back, and any audit entry
+written in it with it. `RequestDb.record_denial` therefore writes the `denied` entry in a separate
+transaction that it commits itself, before raising (plan, « Refus journalisés sans être annulés »).
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, NoReturn
 from uuid import UUID
 
 from fastapi import Depends, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+from app.core.errors import ApiError
+from app.schemas.audit import AuditAction, AuditDetailValue, AuditTargetType
+from app.services import audit
 
 _SET_USER = text(
     "SELECT set_config('app.user_id', :user_id, true),"
@@ -48,6 +57,47 @@ class RequestDb:
         """Active organization: the organization tables only show (and accept) its rows."""
         await self.connection.execute(_SET_ORGANIZATION, {"organization_id": str(organization_id)})
         self.organization_id = organization_id
+
+    async def record_denial(
+        self,
+        error: ApiError,
+        *,
+        action: AuditAction,
+        now: datetime,
+        target_type: AuditTargetType | None = None,
+        target_id: str | None = None,
+        details: Mapping[str, AuditDetailValue] | None = None,
+    ) -> NoReturn:
+        """Log a refusal in the active organization's audit log, then raise `error`.
+
+        ROLLBACK (the request's writes are undone) -> new transaction -> context set again ->
+        INSERT `denied` entry -> COMMIT -> raise. The request transaction's own ROLLBACK, run when
+        `error` propagates, then has nothing left to undo.
+        """
+        user_id, user_email, organization_id = self.user_id, self.user_email, self.organization_id
+        if organization_id is None:
+            raise RuntimeError("record_denial needs an active organization (set_organization)")
+        await self.connection.rollback()
+        await self.connection.begin()
+        if user_id is not None and user_email is not None:
+            await self.set_user(user_id, user_email)
+        await self.set_organization(organization_id)
+        await audit.record(
+            self,
+            action=action,
+            outcome="denied",
+            now=now,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+        )
+        await self.commit_and_raise(error)
+
+    async def commit_and_raise(self, error: ApiError) -> NoReturn:
+        """Commit what the request wrote so far, then raise `error` (e.g. an invitation marked
+        expired on use stays expired although the request answers 410)."""
+        await self.connection.commit()
+        raise error
 
 
 @asynccontextmanager

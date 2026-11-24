@@ -4,7 +4,7 @@ The expected tables below are copied from the plan (« Autorisation »), not com
 `authz.py`: a change of the model must show up here.
 """
 
-from typing import get_args
+from typing import TYPE_CHECKING, get_args
 
 import pytest
 
@@ -12,6 +12,9 @@ from app.core import authz
 from app.core.authz import Role
 from app.db import tables
 from app.schemas import common
+
+if TYPE_CHECKING:
+    from tests.factories import World
 
 ORG_PERMISSIONS = {
     "organization:read",
@@ -161,3 +164,20 @@ def test_require_authenticated_refuses_organization_permission() -> None:
     """An organization permission needs a membership: `require(...)`, never a bare session."""
     with pytest.raises(ValueError, match="every signed-in user"):
         authz.require_authenticated("members:manage")  # type: ignore[arg-type]
+
+
+def test_changing_role_definition_changes_behavior(
+    world: "World", monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-28 (FR-24): give `organization:rename` to Member in `ROLE_PERMISSIONS` (the single
+    definition) and nothing else: a Member can now rename the organization through the API."""
+    carole = world.client_as(world.carole, world.acme)
+    assert carole.patch("/api/organization", json={"name": "Acme SA"}).status_code == 403
+
+    perms = frozenset({*authz.ROLE_PERMISSIONS[Role.MEMBER], "organization:rename"})
+    monkeypatch.setitem(authz.ROLE_PERMISSIONS, Role.MEMBER, perms)
+
+    response = carole.patch("/api/organization", json={"name": "Acme SA"})
+    assert response.status_code == 200
+    assert response.json()["name"] == "Acme SA"
+    assert "organization:rename" in response.json()["permissions"]

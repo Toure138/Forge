@@ -37,6 +37,7 @@ Le faux modèle renvoie les messages scriptés dans l'ordre. Prévois une répon
 - Tests async : le hook `pytest_asyncio_loop_factories` de `tests/conftest.py` (défini sous `win32` seulement) les fait tourner sur une boucle selector. Ne pas surcharger `event_loop_policy` (déprécié).
 - Client HTTP de test : `client_for(app)` de `tests/conftest.py` (https, boucle selector) ; jamais `TestClient(app)` nu pour une app qui touche la base. Réglages de test : `settings_for_tests(**overrides)`.
 - Une fixture autouse bloque toute connexion réseau hors de la boucle locale (`NetworkBlockedError`), sauf pour les tests `live`.
+- Tests d'API multi-utilisateurs : fixture `world` (`tests/factories.py`, Acme : Alice Propriétaire, Bob Admin, Carole Membre, Dave Invité ; Globex : Gina Propriétaire). `world.client_as(world.bob, world.acme)` = navigateur de Bob dans Acme (une application par appel). `world.audit(org)`, `world.role_of(org, person)`, `world.execute(org, sql, ...)` lisent et écrivent en `forge_app` sous contexte. Après un `clock.advance` au-delà des durées de session : `world.renew_sessions()` puis de nouveaux `client_as`.
 
 ## Règles
 - `uv add` / `uv add --dev` uniquement. Le fichier `uv.lock` est versionné.

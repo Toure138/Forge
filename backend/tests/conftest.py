@@ -295,6 +295,16 @@ def client(clean_db: None, clock: FakeClock, fake_google: FakeGoogle) -> Iterato
         yield test_client
 
 
+@pytest.fixture
+def world(clean_db: None, clock: FakeClock, fake_google: FakeGoogle) -> Iterator[Any]:
+    """Acme / Globex world of `tests/factories.py` (people with valid sessions, memberships), on
+    an empty `forge_test`. `world.client_as(world.bob, world.acme)` is Bob's browser in Acme."""
+    from tests.factories import build_world  # imports tests.db.conftest, which imports this module
+
+    with connect_test_database("TEST_DATABASE_URL") as conn:
+        yield from build_world(clock, fake_google, conn)
+
+
 def start_login(client: TestClient) -> tuple[httpx.Response, dict[str, str]]:
     """`GET /api/auth/login` (no redirect followed); returns the response and the parameters of
     the authorization URL the browser is sent to."""

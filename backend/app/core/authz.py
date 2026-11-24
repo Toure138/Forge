@@ -6,19 +6,26 @@ mentions of role names are mirrors checked by `test_schema_literals_match_authz`
 `tests/test_authz.py` (`app/schemas/common.py` for the API contract, `app/db/tables.py` for the
 CHECK constraint) and the "at least one Owner" business invariant (`app/services/memberships.py`).
 
-Route dependencies: `require_authenticated(perm)` (any valid session) and, with the organization
-context (spec 001, T026), `require(perm)`. Each one carries `__forge_permission__`, which the
-route-protection test looks for (FR-25).
+Route dependencies: `require_authenticated(perm)` (any valid session) and `require(perm)` (a
+permission in the active organization, `X-Organization-Id`). Each one carries
+`__forge_permission__`, which the route-protection test looks for (FR-25).
 """
 
 from collections.abc import Callable, Set
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, Literal, get_args
+from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from sqlalchemy import select
 
 from app.auth.dependencies import CurrentSessionDep, Principal
+from app.core.clock import Clock
 from app.core.errors import ApiError
+from app.core.security_log import security_event
+from app.db import tables
+from app.db.context import RequestDb, RequestDbDep
 
 
 class Role(StrEnum):
@@ -151,3 +158,109 @@ def require_authenticated(permission: UserPermission) -> Any:
 
     check.__name__ = f"require_authenticated_{permission.replace(':', '_')}"
     return Depends(declare_permission(check, permission))
+
+
+# --- organization context ---
+
+ORGANIZATION_HEADER: Final = "X-Organization-Id"
+
+# FR-13: whoever creates an organization becomes its Owner.
+CREATOR_ROLE: Final = Role.OWNER
+
+
+def organization_required() -> ApiError:
+    return ApiError(400, "organization_required", "A valid X-Organization-Id header is required.")
+
+
+def organization_not_found() -> ApiError:
+    """Same answer for an organization that does not exist and for one the user is not a member
+    of (FR-15, FR-37)."""
+    return ApiError(404, "organization_not_found", "Organization not found.")
+
+
+def permission_denied() -> ApiError:
+    return ApiError(403, "permission_denied", "Permission denied.")
+
+
+@dataclass(frozen=True)
+class OrgContext:
+    """The active organization of a request, as proven by the user's membership."""
+
+    principal: Principal
+    organization_id: UUID
+    organization_name: str
+    role: Role
+    permissions: frozenset[OrganizationPermission]
+
+
+def _organization_id(request: Request) -> UUID:
+    raw = request.headers.get(ORGANIZATION_HEADER)
+    try:
+        return UUID(raw or "")
+    except ValueError:
+        raise organization_required() from None
+
+
+async def _membership(db: RequestDb, organization_id: UUID, user_id: UUID) -> Any:
+    """(organization name, role) of the user in the organization, or None. Filtered explicitly
+    on the organization and the user, with RLS underneath (constitution X)."""
+    m, o = tables.memberships, tables.organizations
+    statement = (
+        select(o.c.name, m.c.role)
+        .join(o, o.c.id == m.c.organization_id)
+        .where(m.c.organization_id == organization_id)
+        .where(m.c.user_id == user_id)
+    )
+    return (await db.connection.execute(statement)).one_or_none()
+
+
+def require(permission: OrganizationPermission) -> Any:
+    """Route dependency for an action in the active organization.
+
+    Valid session (401) -> CSRF on unsafe methods (403) -> `X-Organization-Id` (400) -> membership
+    of the current user in that organization, read at each request (otherwise 404
+    `organization_not_found`, logged on the platform log only, R2) -> `permission` among the
+    role's permissions (`permissions_for`, read at each call), otherwise `permission.denied` in the
+    organization's audit log and 403. Returns the `OrgContext`; the database context stays on the
+    organization for the rest of the request.
+
+    Usage: `ctx: Annotated[OrgContext, require("members:read")]`."""
+    if permission not in ORGANIZATION_PERMISSIONS:
+        raise ValueError(f"{permission!r} is not an organization permission")
+
+    async def check(request: Request, principal: CurrentSessionDep, db: RequestDbDep) -> OrgContext:
+        organization_id = _organization_id(request)
+        await db.set_organization(organization_id)
+        membership = await _membership(db, organization_id, principal.user_id)
+        if membership is None:
+            security_event(
+                "organization_access_denied",
+                user_id=principal.user_id,
+                organization_id=organization_id,
+            )
+            raise organization_not_found()
+        role = Role(membership.role)
+        permissions = permissions_for(role)
+        if permission not in permissions:
+            clock: Clock = request.app.state.clock
+            await db.record_denial(
+                permission_denied(),
+                action="permission.denied",
+                now=clock.now(),
+                target_type="organization",
+                target_id=str(organization_id),
+                details={"permission": permission},
+            )
+        return OrgContext(principal, organization_id, membership.name, role, permissions)
+
+    check.__name__ = f"require_{permission.replace(':', '_')}"
+    return Depends(declare_permission(check, permission))
+
+
+def missing_role_permission(perms: Set[str], *roles: Role) -> OrganizationPermission | None:
+    """The first permission `perms` lack to manage holders of `roles` (None: all manageable)."""
+    for role in roles:
+        needed = ROLE_MANAGEMENT_PERMISSION[Role(role)]
+        if needed not in perms:
+            return needed
+    return None

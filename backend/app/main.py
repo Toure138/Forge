@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.language_models import BaseChatModel
 
 from app.agents.registry import AgentRegistry
-from app.api.routes import agents, auth, health
+from app.api.routes import agents, audit, auth, health, invitations, members, organizations
 from app.auth.google import GoogleOIDCProvider
 from app.core.aio import ensure_selector_event_loop
 from app.core.clock import Clock, SystemClock
@@ -79,6 +79,10 @@ def create_app(
     )
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
+    app.include_router(organizations.router, prefix="/api")
+    app.include_router(members.router, prefix="/api")
+    app.include_router(invitations.router, prefix="/api")
+    app.include_router(audit.router, prefix="/api")
     app.include_router(agents.router, prefix="/api")
     return app
 

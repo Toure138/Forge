@@ -9,7 +9,10 @@ FastAPI 0.165 includes routers lazily (`app.routes` holds `_IncludedRouter` obje
 dependencies declared at router level.
 """
 
+import ast
+import re
 import uuid
+from pathlib import Path
 from typing import Annotated
 
 import pytest
@@ -145,3 +148,95 @@ def test_anonymous_request_to_protected_route_is_401(
     )
     assert response.status_code == 401
     assert response.json() == {"code": "not_authenticated", "message": "Authentication required."}
+
+
+# --- AC-50 (FR-40): the audit log is append-only for the application ---
+
+APP_DIR = Path(__file__).resolve().parents[2] / "app"
+# The table's definition, and the single writer (`services.audit.record`).
+AUDIT_TABLE_MODULES = frozenset({"db/tables.py", "services/audit.py"})
+_RAW_AUDIT_SQL = re.compile(
+    r"\b(UPDATE\s+audit_events|DELETE\s+FROM\s+audit_events|TRUNCATE\b[^;]*\baudit_events"
+    r"|INSERT\s+INTO\s+audit_events)\b",
+    re.IGNORECASE,
+)
+
+
+def _mentions_audit_table(node: ast.AST) -> bool:
+    return any(
+        (isinstance(n, ast.Attribute) and n.attr == "audit_events")
+        or (isinstance(n, ast.Name) and n.id == "audit_events")
+        for n in ast.walk(node)
+    )
+
+
+def _callee(node: ast.Call) -> str:
+    func = node.func
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+
+
+def audit_table_writers(root: Path) -> list[str]:
+    """Code that could write the audit log other than `services.audit.record`: any mention of the
+    table outside its definition and its writer, any UPDATE / DELETE of it anywhere, any raw SQL
+    that writes it."""
+    found: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        module = path.relative_to(root).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if module not in AUDIT_TABLE_MODULES and (
+                (isinstance(node, ast.Attribute) and node.attr == "audit_events")
+                or (isinstance(node, ast.Name) and node.id == "audit_events")
+                or (isinstance(node, ast.alias) and node.name == "audit_events")
+            ):
+                found.append(f"{module}: uses audit_events")
+            if (
+                isinstance(node, ast.Call)
+                and _callee(node) in {"update", "delete"}
+                and any(_mentions_audit_table(arg) for arg in node.args)
+            ):
+                found.append(f"{module}: {_callee(node)}(audit_events)")
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and _RAW_AUDIT_SQL.search(node.value)
+            ):
+                found.append(f"{module}: raw SQL on audit_events")
+    return found
+
+
+def test_audit_writer_finder_flags_synthetic_writers(tmp_path: Path) -> None:
+    """The guard below, seen red on synthetic modules first."""
+    (tmp_path / "db").mkdir()
+    (tmp_path / "db" / "tables.py").write_text("audit_events = object()\n")
+    (tmp_path / "services").mkdir()
+    (tmp_path / "services" / "audit.py").write_text(
+        "from app.db import tables\n"
+        "def record(db): return insert(tables.audit_events)\n"
+        "def erase(db): return delete(tables.audit_events)\n"
+    )
+    (tmp_path / "routes.py").write_text(
+        "from app.db.tables import audit_events\n"
+        "SQL = 'UPDATE audit_events SET outcome = 1'\n"
+        "def fix(db): return update(audit_events)\n"
+    )
+
+    assert sorted(audit_table_writers(tmp_path)) == sorted(
+        [
+            "services/audit.py: delete(audit_events)",
+            "routes.py: uses audit_events",
+            "routes.py: uses audit_events",
+            "routes.py: raw SQL on audit_events",
+            "routes.py: update(audit_events)",
+        ]
+    )
+
+
+def test_no_route_mutates_audit() -> None:
+    """AC-50: the audit log is only read through the API (GET), and the application's only
+    writer of the table is `services.audit.record` (an INSERT)."""
+    audit_routes = [r for r in api_routes() if r.path.startswith("/api/organization/audit")]
+    assert {(r.name, frozenset(r.methods)) for r in audit_routes} == {
+        ("list_audit_events", frozenset({"GET"}))
+    }
+    assert audit_table_writers(APP_DIR) == []
