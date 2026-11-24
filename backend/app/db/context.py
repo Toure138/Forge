@@ -93,6 +93,14 @@ class RequestDb:
         )
         await self.commit_and_raise(error)
 
+    async def release(self) -> None:
+        """Commit the request's transaction and give the connection back to the pool, before a long
+        wait that needs no database (the model's answer in `invoke`). Nothing stays locked (the
+        session row updated by `touch`, a new conversation) and no connection is held meanwhile.
+        The request can no longer use the database afterwards: any query raises."""
+        await self.connection.commit()
+        await self.connection.close()
+
     async def commit_and_raise(self, error: ApiError) -> NoReturn:
         """Commit what the request wrote so far, then raise `error` (e.g. an invitation marked
         expired on use stays expired although the request answers 410)."""
@@ -102,7 +110,8 @@ class RequestDb:
 
 @asynccontextmanager
 async def request_transaction(engine: AsyncEngine) -> AsyncIterator[RequestDb]:
-    """Connect, BEGIN, yield; COMMIT on success, ROLLBACK on exception (then re-raise)."""
+    """Connect, BEGIN, yield; COMMIT on success, ROLLBACK on exception (then re-raise). After
+    `RequestDb.release()`, there is no transaction left: that COMMIT or ROLLBACK does nothing."""
     async with engine.connect() as connection:
         await connection.begin()
         try:

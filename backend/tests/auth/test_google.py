@@ -154,8 +154,12 @@ async def test_exchange_returns_verified_identity(
     assert form["code_verifier"] == [fake.received_code_verifiers[-1]]
 
 
+DEFAULT_SKEW = 60  # `Settings.oidc_clock_skew_seconds` default
+
+
 def _expired(clock: FakeClock) -> dict[str, object]:
-    past = int(clock.now().timestamp()) - 1
+    """Expired beyond the clock-skew margin (inside it, the token is still accepted)."""
+    past = int(clock.now().timestamp()) - DEFAULT_SKEW - 1
     return {"iat": past - 3600, "exp": past}
 
 
@@ -195,11 +199,13 @@ async def test_id_token_rejected(
 
 @pytest.mark.parametrize(
     ("provider_lag", "accepted"),
-    [(timedelta(minutes=59), True), (timedelta(hours=1, seconds=1), False)],
+    # The token lives 1 h; past `exp`, it stays accepted for the clock-skew margin (60 s).
+    [(timedelta(minutes=59), True), (timedelta(hours=1, seconds=DEFAULT_SKEW), False)],
 )
 async def test_time_claims_use_the_injected_clock(provider_lag: timedelta, accepted: bool) -> None:
     """`iat` / `exp` are checked against the injected clock (plan T14), not the system's: Google's
-    clock is set far from the real date, and the provider's clock trails it by `provider_lag`."""
+    clock is set far from the real date, and the provider's clock runs ahead of it by
+    `provider_lag`."""
     google_clock = FakeClock(datetime(2031, 6, 1, 8, 0, tzinfo=UTC))
     provider_clock = FakeClock(google_clock.now() + provider_lag)
     fake = FakeGoogle(google_clock)
@@ -211,6 +217,53 @@ async def test_time_claims_use_the_injected_clock(provider_lag: timedelta, accep
             with pytest.raises(IdentityError) as caught:
                 await sign_in(provider, fake)
             assert caught.value.reason == "invalid_id_token"
+
+
+@pytest.mark.parametrize(
+    ("iat_offset", "exp_offset", "accepted"),
+    [
+        # Offsets in seconds from the provider's (injected) clock; margin = 60 s, inclusive for
+        # `iat` (`iat <= now + skew`), exclusive for `exp` (`now < exp + skew`).
+        pytest.param(DEFAULT_SKEW, DEFAULT_SKEW + 3600, True, id="iat_in_future_within_skew-ok"),
+        pytest.param(
+            DEFAULT_SKEW + 1, DEFAULT_SKEW + 3601, False, id="iat_in_future_beyond_skew-refused"
+        ),
+        pytest.param(-3600, 1 - DEFAULT_SKEW, True, id="exp_just_passed_within_skew-ok"),
+        pytest.param(-3600, -DEFAULT_SKEW, False, id="exp_passed_beyond_skew-refused"),
+    ],
+)
+async def test_time_claims_tolerate_clock_skew(
+    provider: GoogleOIDCProvider,
+    fake: FakeGoogle,
+    clock: FakeClock,
+    iat_offset: int,
+    exp_offset: int,
+    accepted: bool,
+) -> None:
+    """M1 (review): Google's clock and ours may differ by a few seconds. A small margin
+    (`OIDC_CLOCK_SKEW_SECONDS`, 60 s by default) is tolerated on `iat` and `exp`, always against
+    the injected clock."""
+    now = int(clock.now().timestamp())
+    fake.claim_overrides = {"iat": now + iat_offset, "exp": now + exp_offset}
+    if accepted:
+        assert (await sign_in(provider, fake)).sub == GMAIL_ACCOUNT.sub
+    else:
+        with pytest.raises(IdentityError) as caught:
+            await sign_in(provider, fake)
+        assert caught.value.reason == "invalid_id_token"
+
+
+async def test_clock_skew_setting_is_applied(fake: FakeGoogle, clock: FakeClock) -> None:
+    """The margin comes from the settings: with 0 s, a token issued 1 s ahead is refused."""
+    now = int(clock.now().timestamp())
+    fake.claim_overrides = {"iat": now + 1, "exp": now + 3601}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)) as http:
+        strict = GoogleOIDCProvider(google_settings(oidc_clock_skew_seconds=0), http, clock)
+        with pytest.raises(IdentityError) as caught:
+            await sign_in(strict, fake)
+        assert caught.value.reason == "invalid_id_token"
+        tolerant = GoogleOIDCProvider(google_settings(oidc_clock_skew_seconds=1), http, clock)
+        assert (await sign_in(tolerant, fake)).sub == GMAIL_ACCOUNT.sub
 
 
 async def test_unverified_email_is_rejected(provider: GoogleOIDCProvider, fake: FakeGoogle) -> None:

@@ -9,6 +9,7 @@ share the agents' checkpointer: a missing ownership check would reach the other'
 
 import itertools
 import json
+import threading
 import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -309,3 +310,91 @@ def test_no_db_connection_held_during_stream(world: World) -> None:
     assert names[0] == "metadata"
     assert "token" in names
     assert observed and observed[0] == (0, 1)
+
+
+def test_no_db_connection_held_during_invoke(world: World) -> None:
+    """M2 (review), same as `stream`: `invoke` checks or creates the conversation and commits
+    BEFORE calling the model; while the model runs, the pool has no connection checked out, and
+    the new conversation is already visible from another connection."""
+    model = PoolProbeModel(messages=iter([AIMessage(content="Hello world")]))
+    app = create_app(
+        model,
+        settings=settings_for_tests(),
+        http_transport=httpx.MockTransport(world.fake_google.handler),
+        clock=world.clock,
+    )
+    observed: list[tuple[int, int]] = []
+
+    def probe() -> None:
+        checked_out = app.state.engine.pool.checkedout()
+        observed.append((checked_out, len(conversations_of(world, world.acme, world.carole))))
+
+    model.probe = probe
+    with client_for(app) as client:
+        act_as(client, world.carole, world.acme)
+        response = run(client, "hi")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "thread_id": str(conversations_of(world, world.acme, world.carole)[0]["id"]),
+        "output": "Hello world",
+    }
+    assert observed and observed[0] == (0, 1)
+
+
+class SuspendedModel(FakeToolModel):
+    """Fake model that, when called, signals `entered` then waits until `release` is set."""
+
+    entered: threading.Event
+    release: threading.Event
+
+    def _generate(self, *args: Any, **kwargs: Any) -> Any:
+        self.entered.set()
+        # Upper bound only, so that a broken test cannot hang the suite.
+        self.release.wait(timeout=WAIT_SECONDS)
+        return super()._generate(*args, **kwargs)
+
+
+WAIT_SECONDS = 15
+
+
+def test_concurrent_request_of_same_session_not_blocked_by_invoke(world: World) -> None:
+    """M2 (review): every request records the session's activity (`touch`: an UPDATE of its row).
+    While an `invoke` of the same session waits for the model, that row must not stay locked by
+    the invoke's transaction: another request of the same browser answers at once."""
+    model = SuspendedModel(
+        messages=iter([AIMessage(content="Enfin")]),
+        entered=threading.Event(),
+        release=threading.Event(),
+    )
+    app = create_app(
+        model,
+        settings=settings_for_tests(),
+        http_transport=httpx.MockTransport(world.fake_google.handler),
+        clock=world.clock,
+    )
+    results: dict[str, httpx.Response] = {}
+
+    def send(label: str, request: Callable[[], httpx.Response]) -> threading.Thread:
+        thread = threading.Thread(target=lambda: results.__setitem__(label, request()))
+        thread.start()
+        return thread
+
+    with client_for(app) as client:
+        act_as(client, world.carole, world.acme)
+        invoking = send("invoke", lambda: run(client, "Une longue question"))
+        try:
+            assert model.entered.wait(timeout=WAIT_SECONDS), "the model was never called"
+            other = send("other", lambda: client.get("/api/agents"))
+            other.join(timeout=WAIT_SECONDS)
+            # Read while the model is still suspended: the other request did not wait for it.
+            blocked = other.is_alive()
+        finally:
+            model.release.set()
+            invoking.join(timeout=WAIT_SECONDS)
+        other.join(timeout=WAIT_SECONDS)
+
+    assert not blocked, "the other request waited for the invoke's transaction"
+    assert results["other"].status_code == 200
+    assert results["invoke"].status_code == 200
+    assert results["invoke"].json()["output"] == "Enfin"

@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr | None = None
     oidc_redirect_uri: str | None = None
     app_base_url: str | None = None
+    # Tolerated drift between Google's clock and ours when checking the ID token's `iat` / `exp`.
+    oidc_clock_skew_seconds: int = Field(default=60, ge=0, le=300)
 
     # Sessions & invitations. `Secure` cookies by default; only a local http setup turns it off.
     cookie_secure: bool = True

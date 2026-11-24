@@ -17,7 +17,8 @@ app/
 │                          sessions.py (login_requests, sessions hachées), users.py (upsert par google_sub),
 │                          dependencies.py (CurrentSessionDep : cookie → session → CSRF → set_user)
 ├── db/                    engine.py, tables.py (Table Core), context.py (RequestDb : une transaction par requête,
-│                          set_user / set_organization, record_denial, commit_and_raise ; alias RequestDbDep)
+│                          set_user / set_organization, record_denial, commit_and_raise,
+│                          release : valider et rendre la connexion avant une longue attente ; alias RequestDbDep)
 ├── services/              organizations, memberships (invariant « au moins un Propriétaire », FOR UPDATE),
 │                          invitations, audit, conversations : logique métier, testable sans HTTP
 ├── agents/registry.py     AGENTS {name: AgentSpec} + AgentRegistry (cache + checkpointer)
@@ -68,7 +69,7 @@ Les routes d'agents exigent `agents:use` dans l'organisation active (spec 001) :
 - **Requêtes paramétrées uniquement.** Le RLS ne protège pas d'un SQL injecté (qui pourrait appeler `set_config`). `hide_parameters=True` sur le moteur : les paramètres SQL (state, CSRF…) n'apparaissent jamais dans les journaux.
 - **Permissions, jamais des rôles** : une route déclare `require("perm")` (organisation active) ou `require_authenticated("perm")`. Aucun nom de rôle hors de `core/authz.py` (copies vérifiées par test dans `schemas/common.py` et `db/tables.py`, invariant « dernier Propriétaire » dans `services/memberships.py`). Une route sans permission ni exemption fait échouer `tests/api/test_route_protection.py`.
 - **Refus journalisés** : `db.record_denial(...)` annule la transaction métier, écrit l'audit dans une nouvelle transaction, puis lève l'`ApiError`. Une tentative sur une organisation dont on n'est pas membre va au journal plateforme (`organization_access_denied`), pas à celui de l'organisation.
-- **Horloge injectée** : aucune décision ne lit `now()` SQL ni `datetime.now()`. Les services reçoivent `now`. PyJWT vérifie `exp` avec l'heure système : `google.py` désactive ce contrôle et le refait avec l'horloge.
+- **Horloge injectée** : aucune décision ne lit `now()` SQL ni `datetime.now()`. Les services reçoivent `now`. PyJWT vérifie `exp` avec l'heure système : `google.py` désactive ce contrôle et le refait avec l'horloge, avec une marge `OIDC_CLOCK_SKEW_SECONDS` (60 s par défaut, 0 à 300).
 - **Secrets** : comparaisons en `hmac.compare_digest` ; aucun jeton, cookie, code, state, `code_verifier` ni CSRF dans les journaux (`security_event` a une liste de champs fermée).
 
 ### Migrations
@@ -88,6 +89,8 @@ Les tests migrent eux-mêmes la base `forge_test` (fixture `migrated_db`).
 - `uv add` / `uv add --dev` uniquement. Le fichier `uv.lock` est versionné.
 - Style : `ruff format` (100 colonnes) et `ruff check`, tous deux verts. `mypy` vert sur `app/`.
 - Async de bout en bout dans les routes (`ainvoke` et `astream`, jamais `invoke` dans un handler).
+- Aucune connexion ni verrou pendant l'appel au modèle : `stream` finit son travail en base avant de renvoyer la réponse, `invoke` appelle `db.release()` avant `ainvoke`.
+- Erreurs d'agent : `logger.exception` sur `forge.agents` (agent, mode, organisation, utilisateur ; jamais le message de l'utilisateur), message générique au client (SSE `error`, ou 500 `agent_error` pour `invoke`). Jamais `str(exc)` vers le client.
 - Les API de deepagents, langgraph et langchain évoluent vite. Vérifie une signature avec `uv run python -c "import inspect, deepagents; print(inspect.signature(deepagents.create_deep_agent))"`.
 - Le checkpointer est `InMemorySaver`, partagé par l'`AgentRegistry` (perdu au redémarrage ; persistance prévue en spec 003). La clé de checkpoint est `f"{organization_id}/{user_id}/{conversation_id}"`, et la table `conversations` (RLS organisation + propriétaire) décide qui peut reprendre une conversation. Les graphes de `studio.py` n'en ont pas : le serveur LangGraph gère la persistance.
 - Le traçage LangSmith s'active par `.env` (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`), sans modification de code.

@@ -1,7 +1,7 @@
 ---
 id: "001"
 title: Organisations, connexion Google, rôles d'organisation et isolation des données
-status: in-progress   # draft → planned → ready → in-progress → review → done
+status: review   # draft → planned → ready → in-progress → review → done
 created: 2026-11-24
 owner: utilisateur
 ---

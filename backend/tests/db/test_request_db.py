@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, insert, select, text
+from sqlalchemy.exc import ResourceClosedError
 
 from app.db import tables
 from app.db.context import RequestDbDep, request_transaction
@@ -97,6 +98,33 @@ async def test_exception_rolls_back(request_db_factory) -> None:
     async with request_db_factory() as db:
         ids = (await db.connection.execute(select(tables.users.c.id))).scalars().all()
         assert ids == [committed]
+
+
+async def test_release_commits_and_returns_connection(clean_db: None) -> None:
+    """`RequestDb.release()` (M2, `invoke`): committed, connection back in the pool, the request
+    can no longer query; the end of `request_transaction` then has nothing left to do (its
+    COMMIT / ROLLBACK on the closed connection are no-ops), and an exception raised after the
+    release propagates unchanged."""
+    engine = create_test_engine(pool_size=1, max_overflow=0)
+    kept = uuid.uuid4()
+    try:
+        with pytest.raises(RuntimeError, match="after release"):
+            async with request_transaction(engine) as db:
+                await db.connection.execute(insert(tables.users).values(user_row(kept)))
+                await db.release()
+                assert engine.sync_engine.pool.checkedout() == 0
+                # The single pooled connection is free: another transaction sees the committed row.
+                async with request_transaction(engine) as other:
+                    query = select(tables.users.c.id)
+                    assert (await other.connection.execute(query)).scalars().all() == [kept]
+                with pytest.raises(ResourceClosedError):
+                    await db.connection.execute(select(func.count()).select_from(tables.users))
+                raise RuntimeError("after release")
+        async with request_transaction(engine) as db:  # nothing was rolled back
+            ids = (await db.connection.execute(select(tables.users.c.id))).scalars().all()
+            assert ids == [kept]
+    finally:
+        await engine.dispose()
 
 
 def test_dependency_commits_before_response(clean_db: None) -> None:

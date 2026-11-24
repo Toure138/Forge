@@ -26,6 +26,7 @@ def _no_settings_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL",
         "GOOGLE_CLIENT_ID",
         "GOOGLE_CLIENT_SECRET",
+        "OIDC_CLOCK_SKEW_SECONDS",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -71,6 +72,21 @@ def test_durations_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_durations_must_be_positive(field: str) -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{field: 0})
+
+
+def test_oidc_clock_skew_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M1 (review): tolerated drift between Google's clock and ours on `iat` / `exp`."""
+    assert Settings(_env_file=None).oidc_clock_skew_seconds == 60
+
+    monkeypatch.setenv("OIDC_CLOCK_SKEW_SECONDS", "120")
+    assert Settings(_env_file=None).oidc_clock_skew_seconds == 120
+
+    for bound in (0, 300):
+        settings = Settings(_env_file=None, oidc_clock_skew_seconds=bound)
+        assert settings.oidc_clock_skew_seconds == bound
+    for out_of_bounds in (-1, 301):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, oidc_clock_skew_seconds=out_of_bounds)
 
 
 def test_google_secret_is_not_repr() -> None:

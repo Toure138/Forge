@@ -3,9 +3,10 @@ FR-31): refusals (401, 403, 404, 422) are JSON errors raised before any stream i
 
 `thread_id` is the id of a conversation (FR-32): created by the server, it can only be continued
 by its owner, in its organization, with its agent (404 `conversation_not_found` otherwise). The
-conversation is checked or created, and the request's transaction committed, BEFORE the response
-is returned (`RequestDbDep`, scope "function"): no database connection is held while the model
-streams. The agents' checkpointer sees `{organization_id}/{user_id}/{conversation_id}`.
+conversation is checked or created, and the request's transaction committed, BEFORE the model is
+called: by `db.release()` in `invoke`, by the end of the route function in `stream` (`RequestDbDep`,
+scope "function"). No database connection is held, and no row locked, while the model runs. The
+agents' checkpointer sees `{organization_id}/{user_id}/{conversation_id}`.
 
 GET  /agents                -> the agents (name, description)
 POST /agents/{name}/invoke  -> full answer (JSON)
@@ -13,11 +14,16 @@ POST /agents/{name}/stream  -> Server-Sent Events:
     event: metadata  data: {"thread_id": ...}
     event: token     data: {"text": ...}
     event: tool      data: {"name": ..., "status": "start"|"end"}
-    event: error     data: {"message": ...}
+    event: error     data: {"message": AGENT_ERROR_MESSAGE}
     event: done      data: {}
+
+An exception while the agent runs (constitution VIII) is logged on `forge.agents` with the agent,
+the organization and the user, never the user's message; the client only gets a generic message
+(SSE `error` event for `stream`, 500 `agent_error` for `invoke`), never the exception's text.
 """
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 from uuid import UUID
@@ -36,6 +42,9 @@ from app.schemas.agents import AgentInfo, RunRequest, RunResponse
 from app.services import conversations
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+logger = logging.getLogger("forge.agents")
+
+AGENT_ERROR_MESSAGE = "The agent encountered an error."
 
 
 def _registry(request: Request) -> AgentRegistry:
@@ -55,6 +64,21 @@ def _text(message: BaseMessage) -> str:
 
 
 AgentsUse = Annotated[OrgContext, require("agents:use")]
+
+
+def _log_agent_error(ctx: OrgContext, name: str, mode: str) -> None:
+    """Log the exception being handled, with who and where; nothing from the request's body."""
+    fields = {
+        "agent": name,
+        "mode": mode,
+        "organization_id": str(ctx.organization_id),
+        "user_id": str(ctx.principal.user_id),
+    }
+    logger.exception(
+        "agent_error %s",
+        " ".join(f"{key}={value}" for key, value in fields.items()),
+        extra={"agent_error": fields},
+    )
 
 
 @router.get("", name="list_agents", response_model=list[AgentInfo])
@@ -82,9 +106,16 @@ async def invoke(
 ) -> RunResponse:
     agent = _get_agent(request, name)
     thread_id, config = await _conversation(ctx, db, clock, name, body)
-    result = await agent.ainvoke(
-        {"messages": [{"role": "user", "content": body.message}]}, config=config
-    )
+    # Committed and connection released before the model runs: no connection held, no row (session,
+    # conversation) locked while it answers.
+    await db.release()
+    try:
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": body.message}]}, config=config
+        )
+    except Exception:
+        _log_agent_error(ctx, name, "invoke")
+        raise ApiError(500, "agent_error", AGENT_ERROR_MESSAGE) from None
     return RunResponse(thread_id=thread_id, output=_text(result["messages"][-1]))
 
 
@@ -121,8 +152,9 @@ async def stream(
                         yield _sse("token", {"text": text})
                 elif isinstance(msg, ToolMessage):
                     yield _sse("tool", {"name": msg.name, "status": "end"})
-        except Exception as exc:  # surfaced to the client, logged by uvicorn
-            yield _sse("error", {"message": str(exc)})
+        except Exception:
+            _log_agent_error(ctx, name, "stream")
+            yield _sse("error", {"message": AGENT_ERROR_MESSAGE})
         yield _sse("done", {})
 
     return EventSourceResponse(events())

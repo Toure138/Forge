@@ -22,7 +22,8 @@ ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 
 class GoogleOIDCProvider:
     """`IdentityProvider` for Google. Validation of the ID token: RS256 signature against Google's
-    JWKS, `iss`, `aud`, `azp` (if present), `exp` / `iat` (injected clock), `nonce`
+    JWKS, `iss`, `aud`, `azp` (if present), `exp` / `iat` (injected clock, with a margin of
+    `oidc_clock_skew_seconds`), `nonce`
     (`hmac.compare_digest`), then `email_verified is True`. The `hd` claim is ignored (FR-1)."""
 
     def __init__(self, settings: Settings, http: httpx.AsyncClient, clock: Clock) -> None:
@@ -163,9 +164,13 @@ class GoogleOIDCProvider:
         except (jwt.PyJWTError, httpx.HTTPError, ValueError, KeyError) as exc:
             raise IdentityError("invalid_id_token") from exc
 
+        # Injected clock, with a small margin for the drift between Google's clock and ours.
         now = self._clock.now().timestamp()
+        skew = self._settings.oidc_clock_skew_seconds
         exp, iat = claims["exp"], claims["iat"]
-        if not (isinstance(exp, int) and isinstance(iat, int)) or not (iat <= now < exp):
+        if not (isinstance(exp, int) and isinstance(iat, int)):
+            raise IdentityError("invalid_id_token")
+        if not (iat <= now + skew and now < exp + skew):
             raise IdentityError("invalid_id_token")
         if not isinstance(claims["sub"], str) or not claims["sub"]:
             raise IdentityError("invalid_id_token")

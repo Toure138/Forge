@@ -107,10 +107,12 @@ Tous les refus (401, 403, 404 agent, organisation ou conversation, 422) arrivent
 | `metadata` | `{"thread_id": uuid}` | premier événement |
 | `token` | `{"text": str}` | fragment de réponse de l'agent principal |
 | `tool` | `{"name": str, "status": "start"\|"end"}` | appel d'outil (y compris `task` pour les sous-agents) |
-| `error` | `{"message": str}` | exception pendant l'exécution (l'interface affiche un message générique) |
+| `error` | `{"message": str}` | exception pendant l'exécution : `message` est générique (`"The agent encountered an error."`), jamais le texte de l'exception, qui est journalisé côté serveur (`forge.agents`) ; l'interface affiche son propre message |
 | `done` | `{}` | dernier événement |
 
 Les tokens produits par les sous-agents (namespaces imbriqués) ne sont pas diffusés. Aucune connexion à la base n'est tenue pendant le flux.
+
+`POST /agents/{name}/invoke` suit le même schéma : conversation contrôlée ou créée et transaction validée (connexion rendue au pool) **avant** l'appel au modèle. Une exception de l'agent y répond 500 `{"code": "agent_error", "message": "The agent encountered an error."}`, journalisée comme pour le flux.
 
 ## Flux principaux
 
@@ -133,6 +135,7 @@ Une conversation appartient à un utilisateur dans une organisation (table `conv
 
 - **Audit d'organisation** (table `audit_events`, append-only pour `forge_app`) : création, renommage, invitations, changements de rôle, retraits, départs, refus de permission. Lisible par les Propriétaires et les Admins.
 - **Journal plateforme** (logger `forge.security`) : connexions réussies ou refusées, déconnexions, sessions rejetées, tentatives sur une organisation dont on n'est pas membre. Aucun secret : champs fermés, paramètres SQL masqués, query string du callback masquée dans le journal d'accès.
+- **Erreurs d'agent** (logger `forge.agents`, niveau ERROR) : l'exception avec sa trace, l'agent, le mode (`invoke` ou `stream`), l'organisation et l'utilisateur (identifiants Forge). Jamais le message de l'utilisateur. Le client ne reçoit qu'un message générique (constitution VIII).
 
 ## Ajouter un agent (socle actuel)
 
