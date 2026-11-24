@@ -1,0 +1,26 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.langgraph_api/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Claude Code (personal settings)
+.claude/settings.local.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/

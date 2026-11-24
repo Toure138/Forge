@@ -1,0 +1,47 @@
+[project]
+name = "forge-backend"
+version = "0.1.0"
+description = "Forge backend: FastAPI + LangGraph + deepagents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "deepagents>=0.7.41",
+    "fastapi>=0.165.0",
+    "langchain>=1.5.2",
+    "langchain-anthropic>=1.7.12",
+    "langgraph>=1.2.24",
+    "pydantic-settings>=2.16.3",
+    "sse-starlette>=3.7.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "langgraph-cli[inmem]>=0.4.43",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q"
+markers = ["live: calls the real LLM (needs RUN_LIVE=1 and an API key)"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["app"]
+ignore_missing_imports = true
+check_untyped_defs = true
