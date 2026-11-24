@@ -5,7 +5,7 @@ Python 3.12 · FastAPI · LangGraph · deepagents · langchain-anthropic · uv. 
 ## Structure
 ```
 app/
-├── main.py              create_app(model=None) : app factory, lifespan, CORS, routers /api
+├── main.py              create_app(model, *, settings, http_transport, clock) : factory, lifespan (moteur), routers /api
 ├── core/config.py       Settings (pydantic-settings, lit ../.env)
 ├── core/llm.py          get_chat_model() : SEUL endroit où un modèle est construit
 ├── agents/registry.py   AGENTS {name: AgentSpec} + AgentRegistry (cache + checkpointer)
@@ -30,6 +30,13 @@ def test_agent_calls_tool(make_client):
     assert res.json()["output"] == "Réponse finale"
 ```
 Le faux modèle renvoie les messages scriptés dans l'ordre. Prévois une réponse par tour de modèle, sous-agents compris.
+
+## Windows, base de données et tests (spec 001)
+- psycopg async refuse la boucle Proactor de Windows. Lancer l'API avec `uv run uvicorn app.main:app --reload --port 8000 --loop app.core.aio:selector_loop_factory` (c'est ce que fait `scripts/dev.ps1`). Sans `--loop`, l'application refuse de démarrer avec un message explicite.
+- `pytest` exige la base Docker (`docker compose up -d db` depuis la racine) : les tests de base échouent, ils ne sont jamais sautés.
+- Tests async : le hook `pytest_asyncio_loop_factories` de `tests/conftest.py` (défini sous `win32` seulement) les fait tourner sur une boucle selector. Ne pas surcharger `event_loop_policy` (déprécié).
+- Client HTTP de test : `client_for(app)` de `tests/conftest.py` (https, boucle selector) ; jamais `TestClient(app)` nu pour une app qui touche la base. Réglages de test : `settings_for_tests(**overrides)`.
+- Une fixture autouse bloque toute connexion réseau hors de la boucle locale (`NetworkBlockedError`), sauf pour les tests `live`.
 
 ## Règles
 - `uv add` / `uv add --dev` uniquement. Le fichier `uv.lock` est versionné.
