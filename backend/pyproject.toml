@@ -5,19 +5,23 @@ description = "Forge backend: FastAPI + LangGraph + deepagents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
     "deepagents>=0.7.41",
     "fastapi>=0.165.0",
+    "httpx>=0.28.1",
     "langchain>=1.5.2",
     "langchain-anthropic>=1.7.12",
     "langgraph>=1.2.24",
+    "psycopg[binary]>=3.3.9",
     "pydantic-settings>=2.16.3",
+    "pyjwt[crypto]>=2.15.1",
+    "sqlalchemy[asyncio]>=2.1.9",
     "sse-starlette>=3.7.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "langgraph-cli[inmem]>=0.4.43",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
@@ -38,7 +42,10 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q"
-markers = ["live: calls the real LLM (needs RUN_LIVE=1 and an API key)"]
+markers = [
+    "live: calls the real LLM (needs RUN_LIVE=1 and an API key)",
+    "infra: drives Docker and the repo scripts on the forge-smoke project (needs RUN_INFRA=1)",
+]
 
 [tool.mypy]
 python_version = "3.12"

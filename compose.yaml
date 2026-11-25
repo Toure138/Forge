@@ -1,0 +1,37 @@
+# Local development services. Values come from the repo-root .env (see .env.example).
+#   docker compose up -d --wait db     start Postgres and wait until it is healthy
+#   docker compose down                stop it (data is kept in the named volume)
+#   docker compose down --volumes      stop it and DELETE all local data
+# COMPOSE_PROJECT_NAME overrides `name` (the infra tests use a separate project).
+name: forge
+
+services:
+  db:
+    # Postgres 18 + pgvector (ADR-0002 D5/D14). The extension is only created in spec 003.
+    image: pgvector/pgvector:0.8.7-pg18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      # Read by initdb/10-roles-and-databases.sql through psql's \getenv.
+      FORGE_OWNER_PASSWORD: ${FORGE_OWNER_PASSWORD:?FORGE_OWNER_PASSWORD must be set in .env}
+      FORGE_APP_PASSWORD: ${FORGE_APP_PASSWORD:?FORGE_APP_PASSWORD must be set in .env}
+    ports:
+      # Local interface only; 5433 avoids clashing with a Postgres installed on the host.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # Postgres 18 images keep PGDATA under /var/lib/postgresql/18/docker: mount the parent.
+      - pgdata:/var/lib/postgresql
+      # Run once, on a fresh volume, by the image's entrypoint (as superuser).
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Over TCP on purpose: while the init scripts run, the entrypoint's temporary server
+      # only listens on the Unix socket, so `--wait` does not return before they finish.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres -d postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  # Named <project>_pgdata, i.e. forge_pgdata for the default project.
+  pgdata:

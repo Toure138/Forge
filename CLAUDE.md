@@ -36,12 +36,16 @@ Règles de passage :
 ## Commandes
 
 ```powershell
-.\scripts\dev.ps1                 # backend :8000 + frontend :5173
-.\scripts\check.ps1               # TOUTES les vérifications (à lancer avant de dire « fini »)
+.\scripts\dev.ps1                 # base Docker + migrations + backend :8000 + frontend :5173
+.\scripts\check.ps1               # TOUTES les vérifications (exige Docker ; à lancer avant de dire « fini »)
+.\scripts\db-reset.ps1            # détruit et recrée la base locale (confirmation)
+docker compose up -d db           # base Postgres seule
 
 # Backend (dans backend/)
-uv run uvicorn app.main:app --reload --port 8000
-uv run pytest                     # tests unitaires (modèle factice, gratuits)
+uv run uvicorn app.main:app --reload --port 8000 --loop app.core.aio:selector_loop_factory   # --loop obligatoire sous Windows
+uv run alembic upgrade head       # migrations
+uv run pytest                     # tests unitaires et d'API (modèle factice, faux Google, base Docker, gratuits)
+$env:RUN_INFRA=1; uv run pytest -m infra # tests d'infrastructure (Docker réel, projet séparé)
 $env:RUN_LIVE=1; uv run pytest -m live   # tests contre le vrai LLM (payants)
 uv run ruff format . ; uv run ruff check --fix . ; uv run mypy
 uv run langgraph dev              # LangGraph Studio : visualiser et déboguer les graphes
@@ -70,4 +74,5 @@ Ne déclare jamais une tâche terminée sans avoir lancé les vérifications. Si
 - **Branches** : `feat/NNN-slug` par spec.
 - **Contrat API** : les schémas Pydantic (`backend/app/schemas/`) font foi. Les types TS (`frontend/src/lib/api.ts`) les reflètent. Toute modification de l'un impose la mise à jour de l'autre dans la même tâche.
 - **Secrets** : uniquement dans `.env`, qui n'est pas versionné. Ajoute toute nouvelle variable à `.env.example`.
+- **Sécurité multi-organisations** (constitution X à XII, ADR-0003) : toute route déclare une permission (`require("perm")`), jamais un test de rôle ; toute table d'organisation porte `organization_id` avec RLS forcé dans la même migration ; une ressource d'une autre organisation répond comme une ressource inexistante. Détails dans [backend/CLAUDE.md](backend/CLAUDE.md).
 - **LLM** : le modèle se construit toujours via `app.core.llm.get_chat_model()`. Le modèle par défaut est `anthropic:claude-opus-5-5`, configurable par `LLM_MODEL` et `LLM_EFFORT`. Avec Claude Opus 5.5, ne passe pas `temperature`, `budget_tokens`, `thinking: disabled` ni un `tool_choice` forcé (`any` ou `tool`) : l'API les rejette en 400. Pour une sortie structurée, utilise `response_format` ou des outils en `auto`.

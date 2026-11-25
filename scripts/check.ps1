@@ -15,6 +15,8 @@ function Invoke-Step($name, $dir, [scriptblock]$cmd) {
 Invoke-Step 'backend: ruff format' 'backend' { uv run ruff format --check . }
 Invoke-Step 'backend: ruff check'  'backend' { uv run ruff check . }
 Invoke-Step 'backend: mypy'        'backend' { uv run mypy }
+# pytest needs the Postgres test database (Docker Desktop must be running).
+Invoke-Step 'infra: database'      '.'       { docker compose up -d --wait db }
 Invoke-Step 'backend: pytest'      'backend' { uv run pytest }
 Invoke-Step 'frontend: lint'       'frontend' { pnpm lint }
 Invoke-Step 'frontend: typecheck'  'frontend' { pnpm typecheck }
