@@ -295,3 +295,10 @@ Restent ouverts : les mineurs jugés acceptables pour la 001 (m2 à m8), les sug
 ## Clôture (2026-11-25)
 
 Spec passée en **`done` avec réserve** par décision de l'utilisateur. **Réserve ouverte** : contrôle manuel de T054 (AC-56 ⚠️). Il sera fait dans le navigateur avec le faux fournisseur d'identité local (spec suivante, amendement de FR-6), puis une fois avec le vrai client OAuth Google avant toute mise en production.
+
+## Levée de la réserve (2026-11-25)
+
+Contrôle manuel de T054 fait par l'utilisateur avec un vrai client OAuth Google (mode Test) et `.\scripts\dev.ps1` : résultat rapporté **positif**. AC-56 passe de ⚠️ à ✅ (63 ✅ sur 63). La spec 001 est `done` **sans réserve**.
+
+À refaire au déploiement (spec 009) : nouvelle URI de redirection du domaine cible, passage de l'écran de consentement en production, `COOKIE_SECURE=true`.
+

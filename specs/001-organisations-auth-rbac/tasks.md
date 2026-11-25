@@ -437,14 +437,14 @@ Aucune nouvelle dépendance frontend. Toutes les tâches suivent `frontend/CLAUD
   - TDD : sans objet. Vérification : en partant d'un clone propre et en suivant le README seul, `dev.ps1` démarre.
   - Fichiers : `README.md`, `CLAUDE.md`, `.env.example`.
 
-- [ ] **T054** `backend` — Non-régression de la spec 000 et vérification finale
+- [x] **T054** `backend` — Non-régression de la spec 000 et vérification finale
   - Sous-agent : `backend-engineer` (liste de contrôle manuelle avec l'orchestrateur) · Dépend de : T051, T052, T053 · Couvre : AC-38, AC-56 (volet manuel), non-régression 000
   - Tests : spec 000 AC-1 `test_list_agents`, AC-2 `test_invoke_returns_answer_and_thread`, AC-3 `test_stream_emits_sse_events`, AC-4 `test_invoke_runs_custom_tool`, AC-6 `test_unknown_agent_returns_404` (backend, Membre authentifié) et AC-5 `ChatPanel.test.tsx` : tous présents et verts. `.\scripts\check.ps1` complet ; `RUN_INFRA=1` complet.
   - Contrôle manuel (pour `review.md`, R8) : `.\scripts\dev.ps1` sur un poste avec `.env` rempli ; connexion Google réelle ; création d'une organisation ; chat en flux ; `uv run langgraph dev` démarre toujours (graphes de `studio.py` inchangés).
   - Fichiers : aucun (sauf correctif), Journal de `tasks.md`.
   - Fin : tout est vert, le résultat est noté dans le Journal, la spec peut passer en `review`.
 
-- [ ] **Fin de phase 7** : `.\scripts\check.ps1` vert de bout en bout, et `RUN_INFRA=1` vert.
+- [x] **Fin de phase 7** : `.\scripts\check.ps1` vert de bout en bout, et `RUN_INFRA=1` vert.
 
 ---
 
@@ -831,3 +831,4 @@ Notes d'implémentation, écarts au plan, décisions prises en cours de route (a
   - Docs : `docs/architecture.md` (ligne `error` du protocole SSE, paragraphe `invoke`, journal `forge.agents`), `backend/CLAUDE.md` (`release`, marge d'horloge, règles « aucune connexion pendant l'appel au modèle » et « erreurs d'agent »).
   - **Fin de phase 8** : `powershell -NoProfile -File scripts/check.ps1` → `ALL CHECKS PASSED` (ruff format 105 fichiers, ruff check, mypy 52 fichiers, pytest 519 réussis + 4 sautés : 2 `live`, 2 `infra`, oxlint, tsc, vitest 85 tests). Aucune nouvelle dépendance. Nouvelle variable : `OIDC_CLOCK_SKEW_SECONDS` (`.env.example`). Conteneur `forge-db-1` laissé en marche.
 - 2026-11-25 : **Clôture avec réserve** (décision de l'utilisateur) : la spec passe en `done`. T054 reste **décochée** : le contrôle manuel avec le vrai Google n'est pas fait. Il sera fait (a) dans le navigateur avec le faux fournisseur d'identité local de la spec suivante, pour le flux complet, puis (b) une fois avec le vrai client OAuth Google avant toute mise en production (configuration réelle : URI de redirection, écran de consentement, format réel des jetons).
+- 2026-11-25 : **T054, partie manuelle** : l'utilisateur a créé un client OAuth Google (application Web, mode Test, URI de redirection `http://localhost:5173/api/auth/callback`), rempli `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ANTHROPIC_API_KEY` présents, vérifiés sans lecture des valeurs ; `OIDC_REDIRECT_URI` conforme), lancé `.\scripts\dev.ps1` et rapporte que le test dans le navigateur avec le vrai Google **passe**. Incident de configuration rencontré : l'URI de callback avait été saisie dans « Origines JavaScript autorisées » au lieu de « URI de redirection autorisés » (refus de la console) ; corrigé. T054 et « Fin de phase 7 » cochées ; la réserve de clôture est levée.
