@@ -292,3 +292,6 @@ Les tâches T055 à T057 ont été ajoutées à `tasks.md` (phase 8) avec l'acco
 
 Restent ouverts : les mineurs jugés acceptables pour la 001 (m2 à m8), les suggestions s1 à s5 (T058 non retenue), et le **contrôle manuel de T054**, seule condition restante avant `done`.
 
+## Clôture (2026-11-25)
+
+Spec passée en **`done` avec réserve** par décision de l'utilisateur. **Réserve ouverte** : contrôle manuel de T054 (AC-56 ⚠️). Il sera fait dans le navigateur avec le faux fournisseur d'identité local (spec suivante, amendement de FR-6), puis une fois avec le vrai client OAuth Google avant toute mise en production.
