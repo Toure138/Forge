@@ -5,6 +5,8 @@ model id and generation settings stay configurable from `.env` and
 replaceable by a fake model in tests.
 """
 
+from typing import Any
+
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
@@ -21,7 +23,13 @@ def get_chat_model(settings: Settings | None = None) -> BaseChatModel:
         # Current Claude models: adaptive thinking, depth controlled by effort.
         # Do NOT set temperature / budget_tokens / thinking=disabled: they are
         # rejected (HTTP 400) by Opus 5.5.
+        # The key comes from Settings: pydantic-settings reads .env but does not
+        # export it to os.environ, where ChatAnthropic would otherwise look.
+        key_args: dict[str, Any] = (
+            {"api_key": settings.anthropic_api_key} if settings.anthropic_api_key else {}
+        )
         return ChatAnthropic(  # type: ignore[call-arg]  # pydantic aliases
+            **key_args,
             model=model,
             max_tokens=settings.llm_max_tokens,
             thinking={"type": "adaptive"},
